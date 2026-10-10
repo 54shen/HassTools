@@ -13,8 +13,10 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import org.nxy.hasstools.App
+import org.nxy.hasstools.data.LocationDataStore
 import org.nxy.hasstools.data.WifiGeofenceDataStore
 import org.nxy.hasstools.objects.FusedProvider
+import org.nxy.hasstools.objects.IntervalConfig
 import org.nxy.hasstools.utils.amap.AMap
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -366,53 +368,38 @@ object LocationHandler {
     /**
      * 获取下次定位的时间间隔
      *
-     * @return 下次定位的时间间隔（单位：分钟）
+     * 档位与秒数均可通过设置页自定义。
+     *
+     * @return 下次定位的时间间隔（单位：秒）
      */
-    private fun getScheduledIntervalMinute(): Int {
+    private fun getScheduledIntervalSeconds(intervalConfig: IntervalConfig): Int {
         val lastLocationInfo = lastLocationInfo
         val currLocationInfo = currLocationInfo
 
         // 信息不全，2min
         if (lastLocationInfo == null || currLocationInfo == null) {
-            return 2
+            return 120
         }
 
-        // ignoreTimes大于1则代表上次位置没变
-        // 忽略次数1-5，每次+10min
-        // 忽略次数大于5，前5次+10min，之后每次+15min
-        when (currLocationInfo.ignoreTimes) {
-            in 1..5 -> return currLocationInfo.ignoreTimes * 10
-            in 6..Int.MAX_VALUE -> return 50 + (currLocationInfo.ignoreTimes - 5) * 15
-        }
+        val speed = currLocationInfo.location.speed
 
-        val currLocation = currLocationInfo.location
+        println("speed: $speed, ignoreTimes: ${currLocationInfo.ignoreTimes}")
 
-        val speed = currLocation.speed
-
-        println("speed: $speed")
-
-        // 1min移动小于30米，5
-        // 1min移动大于30米且小于30km/h，3
-        // 大于30km/h且小于50km/h，2
-        // 大于50km/h，1
-        return when {
-            speed < 0.5 -> 5
-            speed < 8.33 -> 3
-            speed < 13.89 -> 2
-            else -> 1
-        }
+        return intervalConfig.resolveIntervalSeconds(speed, currLocationInfo.ignoreTimes)
     }
 
     fun getNextScheduledElapsedTime(): Long {
-        // currTime+interval*60*1000，如果离现在的时间小于1min，就等1min
         val elapsedTime = SystemClock.elapsedRealtime()
         val currTime = currLocationInfo?.createElapsedTime ?: elapsedTime
 
-        val wishedIntervalMinute = getScheduledIntervalMinute()
+        val intervalConfig = LocationDataStore().readData().intervalConfig
+        val wishedIntervalSeconds = getScheduledIntervalSeconds(intervalConfig)
+        val minimumIntervalMillis = intervalConfig.minimumIntervalSeconds.coerceAtLeast(1) * 1000L
 
-        println("currTime: $currTime, wishedIntervalMinute: $wishedIntervalMinute, elapsedTime: $elapsedTime")
+        println("currTime: $currTime, wishedIntervalSeconds: $wishedIntervalSeconds, elapsedTime: $elapsedTime")
 
-        return (currTime + wishedIntervalMinute * 60 * 1000).coerceAtLeast(elapsedTime + 30 * 1000)
+        return (currTime + wishedIntervalSeconds * 1000L)
+            .coerceAtLeast(elapsedTime + minimumIntervalMillis)
     }
 
     fun isSticky(

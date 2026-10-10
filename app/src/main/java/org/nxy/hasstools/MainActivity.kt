@@ -102,6 +102,7 @@ import org.nxy.hasstools.services.LocationWorkerStatus
 import org.nxy.hasstools.services.startLocationWork
 import org.nxy.hasstools.services.stopLocationWork
 import org.nxy.hasstools.ui.components.ButtonSettingsItem
+import org.nxy.hasstools.ui.components.InputSettingsItem
 import org.nxy.hasstools.ui.components.RadioSettingsItem
 import org.nxy.hasstools.ui.components.RadioSettingsOption
 import org.nxy.hasstools.ui.components.SettingsBackgroundColor
@@ -127,6 +128,7 @@ import org.nxy.hasstools.utils.killPowerAlertPermissionGroup
 import org.nxy.hasstools.utils.locationPermissionGroup
 import org.nxy.hasstools.utils.stepPushPermissionGroup
 import java.net.URL
+import java.util.Locale
 
 internal class MainActivityViewModel : ViewModel() {
     val selectedPage = mutableIntStateOf(0)
@@ -952,6 +954,108 @@ class MainActivity : ComponentActivity() {
                     title = "网络偏好",
                     onClick = {
                         startActivity(Intent(this@MainActivity, EditNetworkActivity::class.java))
+                    }
+                )
+            }
+
+            SettingsCard("定位间隔") {
+                val locationConfig by locationViewModel.locationConfig.collectAsState()
+                val intervalConfig = locationConfig.intervalConfig
+
+                SwitchSettingsItem(
+                    title = "自定义定位间隔",
+                    description = "开启后可自行设置各速度档位的定位间隔，关闭时使用内置默认档位。",
+                    enabled = canEdit,
+                    checked = intervalConfig.enabled,
+                    onCheckedChange = {
+                        locationViewModel.setIntervalEnabled(it)
+                    }
+                )
+
+                // 速度档位：每档可单独设置间隔（秒）
+                intervalConfig.speeds.forEachIndexed { index, speedInterval ->
+                    val speedText = if (speedInterval.speedMetersPerSecond >= Float.MAX_VALUE) {
+                        "其它速度"
+                    } else {
+                        val speedKmh = speedInterval.speedMetersPerSecond * 3.6f
+                        "速度 < ${String.format(Locale.CHINA, "%.1f", speedKmh)} km/h"
+                    }
+
+                    InputSettingsItem(
+                        title = speedText,
+                        description = "间隔 ${speedInterval.intervalSeconds} 秒",
+                        enabled = canEdit && intervalConfig.enabled,
+                        value = speedInterval.intervalSeconds.toString(),
+                        onValueChange = { input ->
+                            input.trim().toIntOrNull()?.let { seconds ->
+                                if (seconds > 0) {
+                                    locationViewModel.setSpeedIntervalSeconds(index, seconds)
+                                }
+                            }
+                        }
+                    )
+                }
+
+                // 位置未变化时的间隔
+                InputSettingsItem(
+                    title = "位置未变化时递增秒数",
+                    description = "未变化时每次增加 ${intervalConfig.ignoreStepSeconds} 秒（前 ${intervalConfig.ignoreFastStepCount} 次）",
+                    enabled = canEdit && intervalConfig.enabled,
+                    value = intervalConfig.ignoreStepSeconds.toString(),
+                    onValueChange = { input ->
+                        input.trim().toIntOrNull()?.let { seconds ->
+                            if (seconds > 0) {
+                                locationViewModel.setIgnoreInterval(
+                                    seconds,
+                                    intervalConfig.ignoreSlowStepSeconds
+                                )
+                            }
+                        }
+                    }
+                )
+
+                InputSettingsItem(
+                    title = "长时间未变化时递增秒数",
+                    description = "超过前段次数后，每次增加 ${intervalConfig.ignoreSlowStepSeconds} 秒",
+                    enabled = canEdit && intervalConfig.enabled,
+                    value = intervalConfig.ignoreSlowStepSeconds.toString(),
+                    onValueChange = { input ->
+                        input.trim().toIntOrNull()?.let { seconds ->
+                            if (seconds > 0) {
+                                locationViewModel.setIgnoreInterval(
+                                    intervalConfig.ignoreStepSeconds,
+                                    seconds
+                                )
+                            }
+                        }
+                    }
+                )
+
+                InputSettingsItem(
+                    title = "递增档位数量",
+                    description = "前 ${intervalConfig.ignoreFastStepCount} 次使用较短的递增秒数",
+                    enabled = canEdit && intervalConfig.enabled,
+                    value = intervalConfig.ignoreFastStepCount.toString(),
+                    onValueChange = { input ->
+                        input.trim().toIntOrNull()?.let { count ->
+                            if (count > 0) {
+                                locationViewModel.setIgnoreFastStepCount(count)
+                            }
+                        }
+                    }
+                )
+
+                InputSettingsItem(
+                    title = "最小间隔",
+                    description = "两次定位之间至少间隔 ${intervalConfig.minimumIntervalSeconds} 秒",
+                    enabled = canEdit && intervalConfig.enabled,
+                    value = intervalConfig.minimumIntervalSeconds.toString(),
+                    onValueChange = { input ->
+                        input.trim().toIntOrNull()?.let { seconds ->
+                            if (seconds > 0) {
+                                locationViewModel.setMinimumIntervalSeconds(seconds)
+                            }
+                        }
                     }
                 )
             }

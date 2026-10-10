@@ -48,4 +48,58 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         val updatedConfig = _locationConfig.value.copy(fusedProvider = provider)
         updateLocationConfig(updatedConfig)
     }
+
+    // 更新整个定位间隔配置
+    fun setIntervalConfig(intervalConfig: IntervalConfig) {
+        val updatedConfig = _locationConfig.value.copy(intervalConfig = intervalConfig)
+        updateLocationConfig(updatedConfig)
+    }
+
+    // 是否启用自定义定位间隔
+    fun setIntervalEnabled(enabled: Boolean) {
+        val updatedConfig = _locationConfig.value.copy(
+            intervalConfig = _locationConfig.value.intervalConfig.copy(enabled = enabled)
+        )
+        updateLocationConfig(updatedConfig)
+    }
+
+    // 更新单个速度档位的间隔（秒）
+    fun setSpeedIntervalSeconds(index: Int, seconds: Int) {
+        val intervalConfig = _locationConfig.value.intervalConfig
+
+        val updatedSpeeds = intervalConfig.speeds.mapIndexed { i, item ->
+            if (i == index) item.copy(intervalSeconds = seconds) else item
+        }
+
+        updateLocationConfig(
+            _locationConfig.value.copy(intervalConfig = intervalConfig.copy(speeds = updatedSpeeds))
+        )
+    }
+
+    // 更新位置未变化时的递增规则（秒）
+    fun setIgnoreInterval(stepSeconds: Int, slowStepSeconds: Int) {
+        val updatedConfig = _locationConfig.value.copy(
+            intervalConfig = _locationConfig.value.intervalConfig.copy(
+                ignoreStepSeconds = stepSeconds,
+                ignoreSlowStepSeconds = slowStepSeconds
+            )
+        )
+        updateLocationConfig(updatedConfig)
+    }
+
+    // 更新前段递增的次数上限
+    fun setIgnoreFastStepCount(count: Int) {
+        val updatedConfig = _locationConfig.value.copy(
+            intervalConfig = _locationConfig.value.intervalConfig.copy(ignoreFastStepCount = count)
+        )
+        updateLocationConfig(updatedConfig)
+    }
+
+    // 更新最小间隔（秒）
+    fun setMinimumIntervalSeconds(seconds: Int) {
+        val updatedConfig = _locationConfig.value.copy(
+            intervalConfig = _locationConfig.value.intervalConfig.copy(minimumIntervalSeconds = seconds)
+        )
+        updateLocationConfig(updatedConfig)
+    }
 }

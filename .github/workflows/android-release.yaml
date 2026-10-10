@@ -56,12 +56,26 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      - name: Verify signing secrets
+        run: |
+          missing=""
+          [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -z "$ANDROID_KEYSTORE_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -z "$ANDROID_KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
+          [ -z "$ANDROID_KEY_ALIAS_PASSWORD" ] && missing="$missing ANDROID_KEY_ALIAS_PASSWORD"
+
+          if [ -n "$missing" ]; then
+            echo "::error::缺少以下 Secret，请先运行 'Generate Release Keystore' 工作流并配置 Secret:$missing"
+            exit 1
+          fi
+          echo "签名 Secret 检查通过。"
+
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
 
       - name: Build Release APK
         run: |
-          ./gradlew assembleRelease \
+          ./gradlew assembleRelease --stacktrace \
             -PversionName=${{ github.event.inputs.versionName }} \
             -PversionCode=${{ github.event.inputs.versionCode }}
 
@@ -73,6 +87,14 @@ jobs:
           dest_apk="app/build/outputs/apk/release/HassTools_v${version}.apk"
           mv "$src_apk" "$dest_apk"
           echo "apk_path=$dest_apk" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HassTools-release-v${{ github.event.inputs.versionName }}
+          path: ${{ steps.apk.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Create GitHub Release
         id: create_release
