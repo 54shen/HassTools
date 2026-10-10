@@ -72,7 +72,7 @@ typealias DownloadProgressCallback = (bytesDownloaded: Long, totalBytes: Long) -
  */
 object UpdateChecker {
     private const val GITHUB_API_BASE = "https://api.github.com"
-    private const val REPO_OWNER = "NXY666"
+    private const val REPO_OWNER = "54shen"
     private const val REPO_NAME = "HassTools"
     
     const val REPO_URL = "https://github.com/$REPO_OWNER/$REPO_NAME"

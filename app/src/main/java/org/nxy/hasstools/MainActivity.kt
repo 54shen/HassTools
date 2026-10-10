@@ -94,6 +94,7 @@ import org.nxy.hasstools.objects.AmapViewModel
 import org.nxy.hasstools.objects.FusedProvider
 import org.nxy.hasstools.objects.KillPowerAlertViewModel
 import org.nxy.hasstools.objects.LocationViewModel
+import org.nxy.hasstools.objects.MINIMUM_INTERVAL_SECONDS
 import org.nxy.hasstools.objects.StepPushViewModel
 import org.nxy.hasstools.objects.User
 import org.nxy.hasstools.objects.UserViewModel
@@ -128,7 +129,6 @@ import org.nxy.hasstools.utils.killPowerAlertPermissionGroup
 import org.nxy.hasstools.utils.locationPermissionGroup
 import org.nxy.hasstools.utils.stepPushPermissionGroup
 import java.net.URL
-import java.util.Locale
 
 internal class MainActivityViewModel : ViewModel() {
     val selectedPage = mutableIntStateOf(0)
@@ -960,102 +960,26 @@ class MainActivity : ComponentActivity() {
 
             SettingsCard("定位间隔") {
                 val locationConfig by locationViewModel.locationConfig.collectAsState()
-                val intervalConfig = locationConfig.intervalConfig
+
+                InputSettingsItem(
+                    title = "上报间隔（秒）",
+                    description = "未连接已配置的地理围栏 Wi-Fi 时，每隔多少秒上报一次位置。最小 $MINIMUM_INTERVAL_SECONDS 秒。",
+                    enabled = canEdit,
+                    value = locationConfig.reportIntervalSeconds.toString(),
+                    onValueChange = { input ->
+                        input.trim().toIntOrNull()?.let { seconds ->
+                            locationViewModel.setReportIntervalSeconds(seconds)
+                        }
+                    }
+                )
 
                 SwitchSettingsItem(
-                    title = "自定义定位间隔",
-                    description = "开启后可自行设置各速度档位的定位间隔，关闭时使用内置默认档位。",
+                    title = "地理围栏免打扰",
+                    description = "连接已配置的地理围栏 Wi-Fi 时，改用该围栏自己设置的间隔。关闭后一律使用上面的上报间隔。",
                     enabled = canEdit,
-                    checked = intervalConfig.enabled,
+                    checked = locationConfig.geofenceRelaxEnabled,
                     onCheckedChange = {
-                        locationViewModel.setIntervalEnabled(it)
-                    }
-                )
-
-                // 速度档位：每档可单独设置间隔（秒）
-                intervalConfig.speeds.forEachIndexed { index, speedInterval ->
-                    val speedText = if (speedInterval.speedMetersPerSecond >= Float.MAX_VALUE) {
-                        "其它速度"
-                    } else {
-                        val speedKmh = speedInterval.speedMetersPerSecond * 3.6f
-                        "速度 < ${String.format(Locale.CHINA, "%.1f", speedKmh)} km/h"
-                    }
-
-                    InputSettingsItem(
-                        title = speedText,
-                        description = "间隔 ${speedInterval.intervalSeconds} 秒",
-                        enabled = canEdit && intervalConfig.enabled,
-                        value = speedInterval.intervalSeconds.toString(),
-                        onValueChange = { input ->
-                            input.trim().toIntOrNull()?.let { seconds ->
-                                if (seconds > 0) {
-                                    locationViewModel.setSpeedIntervalSeconds(index, seconds)
-                                }
-                            }
-                        }
-                    )
-                }
-
-                // 位置未变化时的间隔
-                InputSettingsItem(
-                    title = "位置未变化时递增秒数",
-                    description = "未变化时每次增加 ${intervalConfig.ignoreStepSeconds} 秒（前 ${intervalConfig.ignoreFastStepCount} 次）",
-                    enabled = canEdit && intervalConfig.enabled,
-                    value = intervalConfig.ignoreStepSeconds.toString(),
-                    onValueChange = { input ->
-                        input.trim().toIntOrNull()?.let { seconds ->
-                            if (seconds > 0) {
-                                locationViewModel.setIgnoreInterval(
-                                    seconds,
-                                    intervalConfig.ignoreSlowStepSeconds
-                                )
-                            }
-                        }
-                    }
-                )
-
-                InputSettingsItem(
-                    title = "长时间未变化时递增秒数",
-                    description = "超过前段次数后，每次增加 ${intervalConfig.ignoreSlowStepSeconds} 秒",
-                    enabled = canEdit && intervalConfig.enabled,
-                    value = intervalConfig.ignoreSlowStepSeconds.toString(),
-                    onValueChange = { input ->
-                        input.trim().toIntOrNull()?.let { seconds ->
-                            if (seconds > 0) {
-                                locationViewModel.setIgnoreInterval(
-                                    intervalConfig.ignoreStepSeconds,
-                                    seconds
-                                )
-                            }
-                        }
-                    }
-                )
-
-                InputSettingsItem(
-                    title = "递增档位数量",
-                    description = "前 ${intervalConfig.ignoreFastStepCount} 次使用较短的递增秒数",
-                    enabled = canEdit && intervalConfig.enabled,
-                    value = intervalConfig.ignoreFastStepCount.toString(),
-                    onValueChange = { input ->
-                        input.trim().toIntOrNull()?.let { count ->
-                            if (count > 0) {
-                                locationViewModel.setIgnoreFastStepCount(count)
-                            }
-                        }
-                    }
-                )
-
-                InputSettingsItem(
-                    title = "最小间隔",
-                    description = "两次定位之间至少间隔 ${intervalConfig.minimumIntervalSeconds} 秒",
-                    enabled = canEdit && intervalConfig.enabled,
-                    value = intervalConfig.minimumIntervalSeconds.toString(),
-                    onValueChange = { input ->
-                        input.trim().toIntOrNull()?.let { seconds ->
-                            if (seconds > 0) {
-                                locationViewModel.setMinimumIntervalSeconds(seconds)
-                            }
-                        }
+                        locationViewModel.setGeofenceRelaxEnabled(it)
                     }
                 )
             }

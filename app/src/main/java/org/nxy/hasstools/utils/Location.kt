@@ -16,7 +16,7 @@ import org.nxy.hasstools.App
 import org.nxy.hasstools.data.LocationDataStore
 import org.nxy.hasstools.data.WifiGeofenceDataStore
 import org.nxy.hasstools.objects.FusedProvider
-import org.nxy.hasstools.objects.IntervalConfig
+import org.nxy.hasstools.objects.resolveIntervalSeconds
 import org.nxy.hasstools.utils.amap.AMap
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -194,9 +194,6 @@ class LocationInfo(
 ) {
     /** 创建时的系统启动时间（毫秒） */
     val createElapsedTime = SystemClock.elapsedRealtime()
-
-    /** 被忽略的次数 */
-    var ignoreTimes = 0
 }
 
 /**
@@ -208,6 +205,23 @@ object LocationHandler {
     private var lastLocationInfo: LocationInfo? = null
 
     private var currLocationInfo: LocationInfo? = null
+
+    /**
+     * 当前命中的地理围栏自己的上报间隔（秒）。
+     *
+     * null 表示当前没有命中任何围栏，应使用全局间隔。
+     * 由 [org.nxy.hasstools.services.KeepAliveWorker] 在 Wi-Fi 扫描回调里维护，
+     * 供定时器计算下一次唤醒时间时读取。
+     */
+    @Volatile
+    private var currentGeofenceIntervalSeconds: Int? = null
+
+    fun setCurrentGeofenceInterval(seconds: Int?) {
+        if (currentGeofenceIntervalSeconds == seconds) return
+
+        currentGeofenceIntervalSeconds = seconds
+        println("当前围栏上报间隔更新：$seconds")
+    }
 
     fun getZones(hassClient: HassClient): List<Zone> {
         return try {
@@ -288,10 +302,6 @@ object LocationHandler {
         return currLocationInfo?.location
     }
 
-    fun getCurrIgnoreTimes(): Int {
-        return currLocationInfo?.ignoreTimes ?: 0
-    }
-
     fun hasLocationChange(location: Location): Boolean {
         currLocationInfo.let {
             if (it == null) {
@@ -300,11 +310,12 @@ object LocationHandler {
 
             val currLocation = it.location
 
-            val currLatStr = String.format(Locale.CHINA, "%.4f", currLocation.latitude)
-            val currLonStr = String.format(Locale.CHINA, "%.4f", currLocation.longitude)
+            // 用 6 位小数比较，精度约 0.11 米，避免小范围移动被判成「没变」而漏报
+            val currLatStr = String.format(Locale.CHINA, "%.6f", currLocation.latitude)
+            val currLonStr = String.format(Locale.CHINA, "%.6f", currLocation.longitude)
 
-            val newLatStr = String.format(Locale.CHINA, "%.4f", location.latitude)
-            val newLonStr = String.format(Locale.CHINA, "%.4f", location.longitude)
+            val newLatStr = String.format(Locale.CHINA, "%.6f", location.latitude)
+            val newLonStr = String.format(Locale.CHINA, "%.6f", location.longitude)
 
             println(
                 "currLatStr: $currLatStr, currLonStr: $currLonStr, newLatStr: $newLatStr, newLonStr: $newLonStr, same: ${currLatStr == newLatStr && currLonStr == newLonStr}"
@@ -361,45 +372,39 @@ object LocationHandler {
         return newLocationInfo
     }
 
-    fun ignoreLocation() {
-        currLocationInfo?.let { it.ignoreTimes++ }
-    }
-
     /**
-     * 获取下次定位的时间间隔
+     * 获取下次定位的时间间隔（秒）。
      *
-     * 档位与秒数均可通过设置页自定义。
+     * 逻辑只有两条：
+     * - 命中地理围栏 → 用围栏自己的间隔；
+     * - 未命中 → 用全局间隔。
      *
      * @return 下次定位的时间间隔（单位：秒）
      */
-    private fun getScheduledIntervalSeconds(intervalConfig: IntervalConfig): Int {
-        val lastLocationInfo = lastLocationInfo
-        val currLocationInfo = currLocationInfo
+    private fun getScheduledIntervalSeconds(): Int {
+        val locationConfig = LocationDataStore().readData()
 
-        // 信息不全，2min
-        if (lastLocationInfo == null || currLocationInfo == null) {
-            return 120
-        }
+        val seconds = resolveIntervalSeconds(
+            geofenceIntervalSeconds = currentGeofenceIntervalSeconds,
+            globalIntervalSeconds = locationConfig.reportIntervalSeconds,
+            geofenceRelaxEnabled = locationConfig.geofenceRelaxEnabled,
+        )
 
-        val speed = currLocationInfo.location.speed
+        println("当前围栏间隔：$currentGeofenceIntervalSeconds，全局间隔：${locationConfig.reportIntervalSeconds}，最终：$seconds")
 
-        println("speed: $speed, ignoreTimes: ${currLocationInfo.ignoreTimes}")
-
-        return intervalConfig.resolveIntervalSeconds(speed, currLocationInfo.ignoreTimes)
+        return seconds
     }
 
     fun getNextScheduledElapsedTime(): Long {
         val elapsedTime = SystemClock.elapsedRealtime()
         val currTime = currLocationInfo?.createElapsedTime ?: elapsedTime
 
-        val intervalConfig = LocationDataStore().readData().intervalConfig
-        val wishedIntervalSeconds = getScheduledIntervalSeconds(intervalConfig)
-        val minimumIntervalMillis = intervalConfig.minimumIntervalSeconds.coerceAtLeast(1) * 1000L
+        val wishedIntervalSeconds = getScheduledIntervalSeconds()
 
         println("currTime: $currTime, wishedIntervalSeconds: $wishedIntervalSeconds, elapsedTime: $elapsedTime")
 
-        return (currTime + wishedIntervalSeconds * 1000L)
-            .coerceAtLeast(elapsedTime + minimumIntervalMillis)
+        // 下一次唤醒最早也要在「上次定位时刻 + 间隔」之后
+        return currTime + wishedIntervalSeconds * 1000L
     }
 
     fun isSticky(

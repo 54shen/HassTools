@@ -69,9 +69,11 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -79,6 +81,7 @@ import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModel
 import org.nxy.hasstools.R
 import org.nxy.hasstools.objects.GeofenceFunction
+import org.nxy.hasstools.objects.MINIMUM_INTERVAL_SECONDS
 import org.nxy.hasstools.objects.UserViewModel
 import org.nxy.hasstools.objects.WifiGeofence
 import org.nxy.hasstools.objects.WifiGeofenceWifiInfo
@@ -96,6 +99,13 @@ internal class EditWifiGeofenceViewModel : ViewModel() {
     val enabled = mutableStateOf(true)
     val fastEnterEnabled = mutableStateOf(true)
     val leaveProtectionEnabled = mutableStateOf(true)
+
+    /**
+     * 该围栏自己的上报间隔（秒）。
+     *
+     * 空字符串 = 未单独设置，沿用全局间隔。
+     */
+    val reportIntervalText = mutableStateOf("")
     val ssidItems = mutableStateListOf<WifiGeofenceWifiInfo>()
     val bssidItems = mutableStateListOf<WifiGeofenceWifiInfo>()
 
@@ -111,6 +121,10 @@ internal class EditWifiGeofenceViewModel : ViewModel() {
         return geofenceName.value.trim().isNotEmpty() && zoneId.value.trim().isNotEmpty()
     }
 
+    fun resolveReportIntervalSeconds(): Int? {
+        return reportIntervalText.value.trim().toIntOrNull()
+    }
+
     fun hasEdited(): Boolean {
         val rawItem = rawWifiGeofence.value
         return geofenceName.value != rawItem.geofenceName ||
@@ -119,6 +133,7 @@ internal class EditWifiGeofenceViewModel : ViewModel() {
                 enabled.value != rawItem.enabled ||
                 fastEnterEnabled.value != rawItem.functions.fastEnter ||
                 leaveProtectionEnabled.value != rawItem.functions.leaveProtection ||
+                resolveReportIntervalSeconds() != rawItem.functions.reportIntervalSeconds ||
                 ssidItems.toSet() != rawItem.ssidList ||
                 bssidItems.toSet() != rawItem.bssidList
     }
@@ -155,6 +170,7 @@ class EditWifiGeofenceActivity : ComponentActivity() {
             viewModel.enabled.value = item.enabled
             viewModel.fastEnterEnabled.value = item.functions.fastEnter
             viewModel.leaveProtectionEnabled.value = item.functions.leaveProtection
+            viewModel.reportIntervalText.value = item.functions.reportIntervalSeconds?.toString() ?: ""
             viewModel.ssidItems.addAll(item.ssidList)
             viewModel.bssidItems.addAll(item.bssidList)
 
@@ -398,6 +414,8 @@ class EditWifiGeofenceActivity : ComponentActivity() {
 
         val leaveProtectionState = viewModel.leaveProtectionEnabled
 
+        val reportIntervalState = viewModel.reportIntervalText
+
         val ssidItems = viewModel.ssidItems
 
         val bssidItems = viewModel.bssidItems
@@ -516,6 +534,29 @@ class EditWifiGeofenceActivity : ComponentActivity() {
                                 )
                             }
                         }
+
+                        OutlinedTextField(
+                            value = reportIntervalState.value,
+                            onValueChange = {
+                                // 只允许数字，最长 6 位，避免误输入
+                                reportIntervalState.value = it.filter { c -> c.isDigit() }.take(6)
+                            },
+                            label = { Text("上报间隔（秒）") },
+                            placeholder = { Text("留空则使用全局间隔") },
+                            supportingText = {
+                                Text(
+                                    if (reportIntervalState.value.isBlank()) {
+                                        "留空 = 沿用设置页的全局上报间隔"
+                                    } else {
+                                        "命中此围栏时每 ${reportIntervalState.value} 秒上报一次" +
+                                                "（最小 $MINIMUM_INTERVAL_SECONDS 秒）"
+                                    }
+                                )
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
                     }
 
                     TitleCard(
@@ -1017,6 +1058,7 @@ class EditWifiGeofenceActivity : ComponentActivity() {
         val functions = GeofenceFunction(
             fastEnter = viewModel.fastEnterEnabled.value,
             leaveProtection = viewModel.leaveProtectionEnabled.value,
+            reportIntervalSeconds = viewModel.resolveReportIntervalSeconds(),
         )
         val ssidList = viewModel.ssidItems.toSet()
         val bssidList = viewModel.bssidItems.toSet()

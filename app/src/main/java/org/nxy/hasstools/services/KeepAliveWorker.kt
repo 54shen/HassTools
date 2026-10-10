@@ -90,11 +90,14 @@ class KeepAliveForegroundService : Service() {
             } else {
                 null
             }
+            // 围栏配置变化后，旧的间隔记忆一律作废，等下一次扫描重新判定
+            LocationHandler.setCurrentGeofenceInterval(null)
             return availableGeofences != null
         }
 
         fun clearGeofences() {
             availableGeofences = null
+            LocationHandler.setCurrentGeofenceInterval(null)
         }
 
         override fun onScanResultsAvailable() {
@@ -160,6 +163,12 @@ class KeepAliveForegroundService : Service() {
 
                     // 3. 若不同：结束比对，基于该 zone 位置上报
                     matchedGeofence = geofence
+
+                    // 记下该围栏自己的上报间隔，供定时器下次计算唤醒时间使用
+                    LocationHandler.setCurrentGeofenceInterval(
+                        geofence.functions.reportIntervalSeconds
+                    )
+
                     break
                 }
 

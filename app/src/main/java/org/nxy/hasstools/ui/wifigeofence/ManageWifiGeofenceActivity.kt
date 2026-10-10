@@ -295,6 +295,7 @@ class ManageWifiGeofenceActivity : ComponentActivity() {
                     val enabledFunctions = buildList {
                         if (item.functions.fastEnter) add("快速进入")
                         if (item.functions.leaveProtection) add("离开保护")
+                        item.functions.reportIntervalSeconds?.let { add("间隔 ${it} 秒") }
                     }
 
                     Text(

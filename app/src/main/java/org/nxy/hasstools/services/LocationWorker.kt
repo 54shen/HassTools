@@ -453,8 +453,9 @@ class GetLocationPlannedForegroundService : Service() {
                 println(
                     "位置未发生变化：${newLocation.latitude} == ${LocationHandler.getCurrLocation()?.latitude}, ${newLocation.longitude} == ${LocationHandler.getCurrLocation()?.longitude}"
                 )
+                // 位置没变就不上报。间隔完全由设置决定，不再累加状态。
 
-                LocationHandler.ignoreLocation()
+                LocationHandler.updateLocation(newLocation)
             }
 
             stopSelf()
